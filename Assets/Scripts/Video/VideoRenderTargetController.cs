@@ -5,7 +5,7 @@ using UnityEngine.UI;
 
 /// <summary>
 /// Lab 6 - Video Render Target
-/// Display video via RenderTexture → RawImage (UI) or Material (3D Object)
+/// Display video via RenderTexture → RawImage (UI) or Material (3D Cube)
 /// Controls: Tab = Switch display mode, Space = Play/Pause, V = Play
 /// </summary>
 [RequireComponent(typeof(VideoPlayer))]
@@ -14,7 +14,7 @@ public class VideoRenderTargetController : MonoBehaviour
     public enum RenderMode
     {
         RawImage,       // UI RawImage
-        MaterialObject  // 3D Object with Material
+        MaterialObject  // 3D Cube with Material
     }
     
     [Header("Video Settings")]
@@ -31,6 +31,7 @@ public class VideoRenderTargetController : MonoBehaviour
     [SerializeField] private RawImage uiRawImage;
     
     [Header("3D Display")]
+    [SerializeField] private GameObject videoCube;
     [SerializeField] private Renderer targetRenderer;
     
     [Header("Display Mode")]
@@ -73,24 +74,21 @@ public class VideoRenderTargetController : MonoBehaviour
     
     private void Start()
     {
-        // Auto-find UI RawImage if not assigned
+        // Auto-find or create UI RawImage
         if (uiRawImage == null)
         {
-            // Find by name first
             GameObject rawImageGO = GameObject.Find("VideoRawImage");
             if (rawImageGO != null)
             {
                 uiRawImage = rawImageGO.GetComponent<RawImage>();
             }
             
-            // Fallback to any RawImage
             if (uiRawImage == null)
             {
                 uiRawImage = FindAnyObjectByType<RawImage>();
             }
         }
         
-        // Setup UI display
         if (uiRawImage != null)
         {
             uiRawImage.texture = renderTexture;
@@ -98,23 +96,31 @@ public class VideoRenderTargetController : MonoBehaviour
         }
         else
         {
-            Debug.LogWarning("[Lab6] No RawImage found for video display!");
+            Debug.LogWarning("[Lab6] No RawImage found - creating one");
+            CreateUIDisplay();
         }
         
-        // Auto-find 3D Renderer if not assigned
-        if (targetRenderer == null)
+        // Auto-find or create 3D Cube
+        if (videoCube == null)
         {
-            GameObject cube = GameObject.Find("Video3DCube");
-            if (cube != null)
-            {
-                targetRenderer = cube.GetComponent<Renderer>();
-            }
+            videoCube = GameObject.Find("Video3DCube");
+        }
+        
+        if (videoCube == null)
+        {
+            Debug.Log("[Lab6] Creating 3D Video Cube...");
+            Create3DCube();
+        }
+        else
+        {
+            targetRenderer = videoCube.GetComponent<Renderer>();
+            Debug.Log("[Lab6] Found existing Video3DCube");
         }
         
         // Setup material for 3D renderer
         SetupMaterial();
         
-        // Apply initial mode
+        // Apply initial mode (start with RawImage visible, cube hidden)
         ApplyRenderMode();
         
         // Prepare video
@@ -129,6 +135,105 @@ public class VideoRenderTargetController : MonoBehaviour
         }
         
         UpdateStatusUI();
+    }
+    
+    private void CreateUIDisplay()
+    {
+        // Create canvas for UI video
+        GameObject canvasObj = new GameObject("VideoUICanvas_Runtime");
+        Canvas canvas = canvasObj.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = -1;
+        
+        CanvasScaler scaler = canvasObj.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        
+        canvasObj.AddComponent<GraphicRaycaster>();
+        
+        // Create RawImage
+        GameObject rawImageObj = new GameObject("VideoRawImage_Runtime");
+        rawImageObj.transform.SetParent(canvasObj.transform);
+        
+        uiRawImage = rawImageObj.AddComponent<RawImage>();
+        uiRawImage.texture = renderTexture;
+        uiRawImage.color = Color.white;
+        
+        RectTransform rect = uiRawImage.GetComponent<RectTransform>();
+        rect.anchorMin = new Vector2(0.1f, 0.15f);
+        rect.anchorMax = new Vector2(0.9f, 0.85f);
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+        
+        Debug.Log("[Lab6] Created UI RawImage display");
+    }
+    
+    private void Create3DCube()
+    {
+        // Create 3D Cube for video display
+        videoCube = GameObject.CreatePrimitive(PrimitiveType.Cube);
+        videoCube.name = "Video3DCube_Runtime";
+        
+        // Position it in front of camera
+        Camera mainCam = Camera.main;
+        if (mainCam != null)
+        {
+            videoCube.transform.position = mainCam.transform.position + mainCam.transform.forward * 5f;
+        }
+        else
+        {
+            videoCube.transform.position = new Vector3(0, 2, 5);
+        }
+        
+        // Scale to TV-like aspect ratio (16:9)
+        videoCube.transform.localScale = new Vector3(4f, 2.25f, 0.2f);
+        
+        // Get renderer
+        targetRenderer = videoCube.GetComponent<Renderer>();
+        
+        // Start hidden (Mode 1 is RawImage by default)
+        videoCube.SetActive(false);
+        
+        Debug.Log($"[Lab6] Created 3D Video Cube at {videoCube.transform.position}");
+    }
+    
+    private void SetupMaterial()
+    {
+        if (targetRenderer != null)
+        {
+            // Try different shaders
+            Shader unlitShader = Shader.Find("Unlit/Texture");
+            
+            if (unlitShader == null)
+            {
+                unlitShader = Shader.Find("Universal Render Pipeline/Unlit");
+            }
+            
+            if (unlitShader == null)
+            {
+                unlitShader = Shader.Find("Standard");
+            }
+            
+            if (unlitShader != null)
+            {
+                runtimeMaterial = new Material(unlitShader);
+                runtimeMaterial.mainTexture = renderTexture;
+                
+                // For Standard shader, set to emissive so it's visible
+                if (unlitShader.name == "Standard")
+                {
+                    runtimeMaterial.SetColor("_EmissionColor", Color.white);
+                    runtimeMaterial.EnableKeyword("_EMISSION");
+                }
+                
+                targetRenderer.material = runtimeMaterial;
+                Debug.Log($"[Lab6] Setup material with shader: {unlitShader.name}");
+            }
+            else
+            {
+                Debug.LogError("[Lab6] Could not find any suitable shader!");
+            }
+        }
     }
     
     private void Update()
@@ -170,32 +275,13 @@ public class VideoRenderTargetController : MonoBehaviour
         UpdateStatusUI();
     }
     
-    private void SetupMaterial()
-    {
-        if (targetRenderer != null)
-        {
-            // Create runtime material with Unlit/Texture shader
-            Shader unlitShader = Shader.Find("Unlit/Texture");
-            if (unlitShader == null)
-            {
-                unlitShader = Shader.Find("Universal Render Pipeline/Unlit");
-            }
-            
-            if (unlitShader != null)
-            {
-                runtimeMaterial = new Material(unlitShader);
-                runtimeMaterial.mainTexture = renderTexture;
-                targetRenderer.material = runtimeMaterial;
-                Debug.Log("[Lab6] Setup 3D material for cube");
-            }
-        }
-    }
-    
     public void ToggleRenderMode()
     {
         currentMode = currentMode == RenderMode.RawImage ? RenderMode.MaterialObject : RenderMode.RawImage;
         ApplyRenderMode();
-        Debug.Log($"[Lab6] Switched to: {currentMode}");
+        
+        string modeName = currentMode == RenderMode.RawImage ? "UI RawImage" : "3D Cube";
+        Debug.Log($"[Lab6] Switched to Mode: {modeName}");
     }
     
     public void SetRenderMode(RenderMode mode)
@@ -215,10 +301,11 @@ public class VideoRenderTargetController : MonoBehaviour
                     uiRawImage.gameObject.SetActive(true);
                     uiRawImage.texture = renderTexture;
                 }
-                if (targetRenderer != null)
+                if (videoCube != null)
                 {
-                    targetRenderer.gameObject.SetActive(false);
+                    videoCube.SetActive(false);
                 }
+                Debug.Log("[Lab6] Mode 1: UI RawImage (2D overlay)");
                 break;
                 
             case RenderMode.MaterialObject:
@@ -227,14 +314,17 @@ public class VideoRenderTargetController : MonoBehaviour
                 {
                     uiRawImage.gameObject.SetActive(false);
                 }
-                if (targetRenderer != null)
+                if (videoCube != null)
                 {
-                    targetRenderer.gameObject.SetActive(true);
+                    videoCube.SetActive(true);
+                    
+                    // Update material texture
                     if (runtimeMaterial != null)
                     {
                         runtimeMaterial.mainTexture = renderTexture;
                     }
                 }
+                Debug.Log("[Lab6] Mode 2: 3D Cube with video material");
                 break;
         }
     }
@@ -255,19 +345,20 @@ public class VideoRenderTargetController : MonoBehaviour
     {
         if (statusText == null) return;
         
-        string modeName = currentMode == RenderMode.RawImage ? "UI RawImage" : "3D Material";
+        string modeName = currentMode == RenderMode.RawImage ? "Mode 1: UI RawImage" : "Mode 2: 3D Cube";
         string playStatus = videoPlayer.isPlaying ? "▶️ Playing" : (isPrepared ? "⏸️ Paused" : "⏳ Preparing");
-        string resolution = $"{videoWidth}x{videoHeight}";
         
         double currentTime = videoPlayer.time;
         double duration = videoPlayer.clip != null ? videoPlayer.clip.length : 0;
         string timeText = $"{FormatTime(currentTime)} / {FormatTime(duration)}";
         
-        statusText.text = $"Render Mode: {modeName}\n" +
+        statusText.text = $"Render Target Demo\n" +
+                          $"Current: {modeName}\n" +
                           $"Status: {playStatus}\n" +
-                          $"Resolution: {resolution}\n" +
                           $"Time: {timeText}\n\n" +
-                          $"Controls:\nTab = Switch Mode\nV = Play\nSpace = Pause";
+                          $"Controls:\n" +
+                          $"Tab = Switch Mode\n" +
+                          $"V = Play | Space = Pause";
     }
     
     private string FormatTime(double seconds)
