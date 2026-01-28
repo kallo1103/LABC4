@@ -142,7 +142,7 @@ public class VideoRenderTargetController : MonoBehaviour
         // Create canvas for UI video
         GameObject canvasObj = new GameObject("VideoUICanvas_Runtime");
         Canvas canvas = canvasObj.AddComponent<Canvas>();
-        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.renderMode = UnityEngine.RenderMode.ScreenSpaceOverlay;
         canvas.sortingOrder = -1;
         
         CanvasScaler scaler = canvasObj.AddComponent<CanvasScaler>();
