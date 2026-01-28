@@ -4,6 +4,7 @@ using UnityEngine.Video;
 using UnityEngine.UI;
 using UnityEngine.SceneManagement;
 using System.Collections;
+using TMPro;
 
 /// <summary>
 /// Mini Project - Intro Cutscene Game
@@ -36,9 +37,9 @@ public class IntroCutsceneManager : MonoBehaviour
     
     [Header("UI Elements")]
     [SerializeField] private Button skipButton;
-    [SerializeField] private TMPro.TextMeshProUGUI skipButtonText;
+    [SerializeField] private TextMeshProUGUI skipButtonText;
     [SerializeField] private GameObject loadingIndicator;
-    [SerializeField] private TMPro.TextMeshProUGUI statusText;
+    [SerializeField] private TextMeshProUGUI statusText;
     
     [Header("Skip Settings")]
     [SerializeField] private Key skipKey = Key.Escape;
@@ -59,13 +60,10 @@ public class IntroCutsceneManager : MonoBehaviour
         if (videoPlayer == null)
             videoPlayer = gameObject.AddComponent<VideoPlayer>();
             
-        // Create RenderTexture if not assigned
-        if (renderTexture == null)
-        {
-            renderTexture = new RenderTexture(videoWidth, videoHeight, 0);
-            renderTexture.name = "MiniProject_VideoRenderTexture";
-            renderTexture.Create();
-        }
+        // Create RenderTexture
+        renderTexture = new RenderTexture(videoWidth, videoHeight, 0);
+        renderTexture.name = "MiniProject_VideoRenderTexture";
+        renderTexture.Create();
         
         // Configure VideoPlayer
         videoPlayer.playOnAwake = false;
@@ -79,12 +77,6 @@ public class IntroCutsceneManager : MonoBehaviour
         // Audio from video
         videoPlayer.audioOutputMode = VideoAudioOutputMode.Direct;
         videoPlayer.SetDirectAudioVolume(0, 0.5f);
-        
-        // Assign RenderTexture to RawImage
-        if (videoDisplay != null)
-        {
-            videoDisplay.texture = renderTexture;
-        }
         
         // Subscribe to events
         videoPlayer.prepareCompleted += OnVideoPrepared;
@@ -101,11 +93,45 @@ public class IntroCutsceneManager : MonoBehaviour
             bgmSource.loop = true;
             bgmSource.playOnAwake = false;
         }
-        
-        // Setup skip button
-        if (skipButton != null)
+    }
+    
+    private void Start()
+    {
+        // Auto-find RawImage
+        if (videoDisplay == null)
         {
-            skipButton.onClick.AddListener(SkipIntro);
+            GameObject rawImageGO = GameObject.Find("VideoDisplay");
+            if (rawImageGO != null)
+            {
+                videoDisplay = rawImageGO.GetComponent<RawImage>();
+            }
+            
+            if (videoDisplay == null)
+            {
+                videoDisplay = FindAnyObjectByType<RawImage>();
+            }
+        }
+        
+        // Assign RenderTexture to RawImage
+        if (videoDisplay != null)
+        {
+            videoDisplay.texture = renderTexture;
+            Debug.Log($"[MiniProject] Found video display: {videoDisplay.gameObject.name}");
+        }
+        else
+        {
+            Debug.LogWarning("[MiniProject] No RawImage found - creating one");
+            CreateVideoDisplay();
+        }
+        
+        // Auto-find fade overlay
+        if (fadeOverlay == null)
+        {
+            GameObject fadeObj = GameObject.Find("FadeOverlay");
+            if (fadeObj != null)
+            {
+                fadeOverlay = fadeObj.GetComponent<Image>();
+            }
         }
         
         // Initialize fade overlay (start black)
@@ -115,26 +141,59 @@ public class IntroCutsceneManager : MonoBehaviour
             fadeOverlay.gameObject.SetActive(true);
         }
         
+        // Find skip button
+        if (skipButton == null)
+        {
+            GameObject skipObj = GameObject.Find("SkipButton");
+            if (skipObj != null)
+            {
+                skipButton = skipObj.GetComponent<Button>();
+            }
+        }
+        
+        if (skipButton != null)
+        {
+            skipButton.onClick.AddListener(SkipIntro);
+        }
+        
         // Hide loading indicator
         if (loadingIndicator != null)
         {
             loadingIndicator.SetActive(false);
         }
-    }
-    
-    private void Start()
-    {
-        // Auto-find RawImage if not assigned
-        if (videoDisplay == null)
-        {
-            videoDisplay = FindAnyObjectByType<RawImage>();
-            if (videoDisplay != null)
-            {
-                videoDisplay.texture = renderTexture;
-            }
-        }
         
         StartCoroutine(PlayIntroSequence());
+    }
+    
+    private void CreateVideoDisplay()
+    {
+        // Create canvas for video
+        GameObject canvasObj = new GameObject("VideoCanvas_Runtime");
+        Canvas canvas = canvasObj.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = -10;
+        
+        CanvasScaler scaler = canvasObj.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        
+        canvasObj.AddComponent<GraphicRaycaster>();
+        
+        // Create RawImage
+        GameObject rawImageObj = new GameObject("VideoDisplay_Runtime");
+        rawImageObj.transform.SetParent(canvasObj.transform);
+        
+        videoDisplay = rawImageObj.AddComponent<RawImage>();
+        videoDisplay.texture = renderTexture;
+        videoDisplay.color = Color.white;
+        
+        RectTransform rect = videoDisplay.GetComponent<RectTransform>();
+        rect.anchorMin = Vector2.zero;
+        rect.anchorMax = Vector2.one;
+        rect.offsetMin = Vector2.zero;
+        rect.offsetMax = Vector2.zero;
+        
+        Debug.Log("[MiniProject] Created runtime video display");
     }
     
     private void Update()
@@ -179,6 +238,8 @@ public class IntroCutsceneManager : MonoBehaviour
     
     private IEnumerator PlayIntroSequence()
     {
+        Debug.Log("[MiniProject] Starting intro sequence...");
+        
         // Show loading
         if (loadingIndicator != null)
             loadingIndicator.SetActive(true);
@@ -187,8 +248,9 @@ public class IntroCutsceneManager : MonoBehaviour
         if (videoPlayer != null && videoPlayer.clip != null)
         {
             videoPlayer.Prepare();
+            Debug.Log("[MiniProject] Preparing video...");
             
-            // Wait for preparation
+            // Wait for preparation with timeout
             float prepareTimeout = 10f;
             float elapsed = 0f;
             while (!isPrepared && elapsed < prepareTimeout)
@@ -196,6 +258,15 @@ public class IntroCutsceneManager : MonoBehaviour
                 elapsed += Time.deltaTime;
                 yield return null;
             }
+            
+            if (!isPrepared)
+            {
+                Debug.LogWarning("[MiniProject] Video prepare timeout!");
+            }
+        }
+        else
+        {
+            Debug.LogWarning("[MiniProject] No video clip assigned!");
         }
         
         // Hide loading
@@ -203,27 +274,27 @@ public class IntroCutsceneManager : MonoBehaviour
             loadingIndicator.SetActive(false);
         
         // Fade in from black
+        Debug.Log("[MiniProject] Fading in...");
         yield return StartCoroutine(FadeScreen(1f, 0f));
         
         // Start video and BGM
         if (videoPlayer != null && isPrepared)
         {
             videoPlayer.Play();
-            Debug.Log("[IntroCutscene] Video started playing");
+            Debug.Log("[MiniProject] Video started playing");
         }
             
         if (bgmSource != null && bgmClip != null)
         {
             bgmSource.Play();
+            Debug.Log("[MiniProject] BGM started");
         }
-            
-        Debug.Log("[IntroCutscene] Intro started");
     }
     
     private void OnVideoPrepared(VideoPlayer vp)
     {
         isPrepared = true;
-        Debug.Log("[IntroCutscene] Video prepared");
+        Debug.Log("[MiniProject] Video prepared and ready!");
     }
     
     private void OnVideoEnded(VideoPlayer vp)
@@ -231,7 +302,7 @@ public class IntroCutsceneManager : MonoBehaviour
         if (!isSkipping)
         {
             videoEnded = true;
-            Debug.Log("[IntroCutscene] Video ended naturally, transitioning to gameplay");
+            Debug.Log("[MiniProject] Video ended naturally, transitioning to gameplay");
             StartCoroutine(TransitionToGameplay());
         }
     }
@@ -241,7 +312,7 @@ public class IntroCutsceneManager : MonoBehaviour
         if (isSkipping) return;
         
         isSkipping = true;
-        Debug.Log("[IntroCutscene] Skipping intro...");
+        Debug.Log("[MiniProject] Skipping intro...");
         
         // Stop video
         if (videoPlayer != null)
@@ -262,27 +333,52 @@ public class IntroCutsceneManager : MonoBehaviour
         if (skipButton != null)
             skipButton.gameObject.SetActive(false);
         
-        // Ensure fade overlay is active
-        if (fadeOverlay != null)
-            fadeOverlay.gameObject.SetActive(true);
+        // Ensure fade overlay exists
+        if (fadeOverlay == null)
+        {
+            // Create fade overlay
+            GameObject canvasObj = GameObject.Find("IntroCanvas");
+            if (canvasObj == null)
+            {
+                canvasObj = new GameObject("FadeCanvas_Runtime");
+                Canvas canvas = canvasObj.AddComponent<Canvas>();
+                canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+                canvas.sortingOrder = 100;
+                canvasObj.AddComponent<CanvasScaler>();
+            }
+            
+            GameObject fadeObj = new GameObject("FadeOverlay_Runtime");
+            fadeObj.transform.SetParent(canvasObj.transform);
+            
+            fadeOverlay = fadeObj.AddComponent<Image>();
+            fadeOverlay.color = new Color(0, 0, 0, 0);
+            
+            RectTransform rect = fadeOverlay.GetComponent<RectTransform>();
+            rect.anchorMin = Vector2.zero;
+            rect.anchorMax = Vector2.one;
+            rect.offsetMin = Vector2.zero;
+            rect.offsetMax = Vector2.zero;
+        }
+        
+        fadeOverlay.gameObject.SetActive(true);
         
         // Fade to black
+        Debug.Log("[MiniProject] Fading out...");
         yield return StartCoroutine(FadeScreen(0f, 1f));
         
         // Wait a bit
         yield return new WaitForSeconds(transitionDelay);
         
         // Load gameplay scene
-        Debug.Log($"[IntroCutscene] Loading scene: {gameplaySceneName}");
+        Debug.Log($"[MiniProject] Loading scene: {gameplaySceneName}");
         
         if (!string.IsNullOrEmpty(gameplaySceneName))
         {
-            // Check if scene exists in build settings
             SceneManager.LoadScene(gameplaySceneName);
         }
         else
         {
-            Debug.LogWarning("[IntroCutscene] No gameplay scene specified!");
+            Debug.LogWarning("[MiniProject] No gameplay scene specified!");
         }
     }
     
@@ -370,7 +466,7 @@ public class IntroCutsceneManager : MonoBehaviour
         }
         
         // Cleanup runtime RenderTexture
-        if (renderTexture != null && renderTexture.name == "MiniProject_VideoRenderTexture")
+        if (renderTexture != null)
         {
             renderTexture.Release();
             Destroy(renderTexture);

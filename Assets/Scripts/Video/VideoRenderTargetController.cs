@@ -32,7 +32,6 @@ public class VideoRenderTargetController : MonoBehaviour
     
     [Header("3D Display")]
     [SerializeField] private Renderer targetRenderer;
-    [SerializeField] private MeshFilter targetMeshFilter;
     
     [Header("Display Mode")]
     [SerializeField] private RenderMode currentMode = RenderMode.RawImage;
@@ -48,13 +47,10 @@ public class VideoRenderTargetController : MonoBehaviour
     {
         videoPlayer = GetComponent<VideoPlayer>();
         
-        // Create RenderTexture if not assigned
-        if (renderTexture == null)
-        {
-            renderTexture = new RenderTexture(videoWidth, videoHeight, 0);
-            renderTexture.name = "Lab6_VideoRenderTexture";
-            renderTexture.Create();
-        }
+        // Create RenderTexture
+        renderTexture = new RenderTexture(videoWidth, videoHeight, 0);
+        renderTexture.name = "Lab6_VideoRenderTexture";
+        renderTexture.Create();
         
         // Configure VideoPlayer
         videoPlayer.isLooping = loop;
@@ -71,26 +67,66 @@ public class VideoRenderTargetController : MonoBehaviour
         videoPlayer.audioOutputMode = VideoAudioOutputMode.Direct;
         videoPlayer.SetDirectAudioVolume(0, 1f);
         
-        // Setup UI display
-        if (uiRawImage != null)
-        {
-            uiRawImage.texture = renderTexture;
-        }
-        
-        // Setup material for 3D renderer
-        SetupMaterial();
-        
         // Events
         videoPlayer.prepareCompleted += OnPrepared;
     }
     
     private void Start()
     {
+        // Auto-find UI RawImage if not assigned
+        if (uiRawImage == null)
+        {
+            // Find by name first
+            GameObject rawImageGO = GameObject.Find("VideoRawImage");
+            if (rawImageGO != null)
+            {
+                uiRawImage = rawImageGO.GetComponent<RawImage>();
+            }
+            
+            // Fallback to any RawImage
+            if (uiRawImage == null)
+            {
+                uiRawImage = FindAnyObjectByType<RawImage>();
+            }
+        }
+        
+        // Setup UI display
+        if (uiRawImage != null)
+        {
+            uiRawImage.texture = renderTexture;
+            Debug.Log($"[Lab6] Found RawImage: {uiRawImage.gameObject.name}");
+        }
+        else
+        {
+            Debug.LogWarning("[Lab6] No RawImage found for video display!");
+        }
+        
+        // Auto-find 3D Renderer if not assigned
+        if (targetRenderer == null)
+        {
+            GameObject cube = GameObject.Find("Video3DCube");
+            if (cube != null)
+            {
+                targetRenderer = cube.GetComponent<Renderer>();
+            }
+        }
+        
+        // Setup material for 3D renderer
+        SetupMaterial();
+        
         // Apply initial mode
         ApplyRenderMode();
         
         // Prepare video
-        videoPlayer.Prepare();
+        if (videoPlayer.clip != null)
+        {
+            videoPlayer.Prepare();
+            Debug.Log("[Lab6] Preparing video...");
+        }
+        else
+        {
+            Debug.LogWarning("[Lab6] No video clip assigned!");
+        }
         
         UpdateStatusUI();
     }
@@ -112,6 +148,7 @@ public class VideoRenderTargetController : MonoBehaviour
             if (isPrepared)
             {
                 videoPlayer.Play();
+                Debug.Log("[Lab6] Playing video");
             }
         }
         
@@ -119,9 +156,15 @@ public class VideoRenderTargetController : MonoBehaviour
         if (keyboard.spaceKey.wasPressedThisFrame)
         {
             if (videoPlayer.isPlaying)
+            {
                 videoPlayer.Pause();
+                Debug.Log("[Lab6] Paused");
+            }
             else if (isPrepared)
+            {
                 videoPlayer.Play();
+                Debug.Log("[Lab6] Resumed");
+            }
         }
         
         UpdateStatusUI();
@@ -143,10 +186,7 @@ public class VideoRenderTargetController : MonoBehaviour
                 runtimeMaterial = new Material(unlitShader);
                 runtimeMaterial.mainTexture = renderTexture;
                 targetRenderer.material = runtimeMaterial;
-            }
-            else
-            {
-                Debug.LogWarning("[VideoRenderTarget] Could not find Unlit shader");
+                Debug.Log("[Lab6] Setup 3D material for cube");
             }
         }
     }
@@ -155,7 +195,7 @@ public class VideoRenderTargetController : MonoBehaviour
     {
         currentMode = currentMode == RenderMode.RawImage ? RenderMode.MaterialObject : RenderMode.RawImage;
         ApplyRenderMode();
-        Debug.Log($"[VideoRenderTarget] Switched to: {currentMode}");
+        Debug.Log($"[Lab6] Switched to: {currentMode}");
     }
     
     public void SetRenderMode(RenderMode mode)
@@ -202,11 +242,12 @@ public class VideoRenderTargetController : MonoBehaviour
     private void OnPrepared(VideoPlayer vp)
     {
         isPrepared = true;
-        Debug.Log("[VideoRenderTarget] Video prepared");
+        Debug.Log("[Lab6] Video prepared and ready!");
         
         if (autoPlay)
         {
             videoPlayer.Play();
+            Debug.Log("[Lab6] Auto-playing video");
         }
     }
     
@@ -247,7 +288,7 @@ public class VideoRenderTargetController : MonoBehaviour
         }
         
         // Cleanup runtime RenderTexture
-        if (renderTexture != null && renderTexture.name == "Lab6_VideoRenderTexture")
+        if (renderTexture != null)
         {
             renderTexture.Release();
             Destroy(renderTexture);

@@ -4,6 +4,7 @@ using UnityEngine.Video;
 using UnityEngine.UI;
 using UnityEngine.Events;
 using UnityEngine.SceneManagement;
+using TMPro;
 
 /// <summary>
 /// Lab 7 - Video Events & Control
@@ -35,8 +36,8 @@ public class VideoEventController : MonoBehaviour
     public UnityEvent OnVideoEnded;
     
     [Header("UI Reference (Optional)")]
-    [SerializeField] private TMPro.TextMeshProUGUI statusText;
-    [SerializeField] private TMPro.TextMeshProUGUI eventLogText;
+    [SerializeField] private TextMeshProUGUI statusText;
+    [SerializeField] private TextMeshProUGUI eventLogText;
     
     private VideoPlayer videoPlayer;
     private System.Text.StringBuilder eventLog = new System.Text.StringBuilder();
@@ -54,13 +55,10 @@ public class VideoEventController : MonoBehaviour
     {
         videoPlayer = GetComponent<VideoPlayer>();
         
-        // Create RenderTexture if not assigned
-        if (renderTexture == null)
-        {
-            renderTexture = new RenderTexture(videoWidth, videoHeight, 0);
-            renderTexture.name = "Lab7_VideoRenderTexture";
-            renderTexture.Create();
-        }
+        // Create RenderTexture
+        renderTexture = new RenderTexture(videoWidth, videoHeight, 0);
+        renderTexture.name = "Lab7_VideoRenderTexture";
+        renderTexture.Create();
         
         // Configure VideoPlayer
         videoPlayer.renderMode = VideoRenderMode.RenderTexture;
@@ -77,18 +75,6 @@ public class VideoEventController : MonoBehaviour
         videoPlayer.audioOutputMode = VideoAudioOutputMode.Direct;
         videoPlayer.SetDirectAudioVolume(0, 1f);
         
-        // Assign RenderTexture to RawImage
-        if (displayRawImage != null)
-        {
-            displayRawImage.texture = renderTexture;
-        }
-        
-        // Hide end UI initially
-        if (endUIPanel != null)
-        {
-            endUIPanel.SetActive(false);
-        }
-        
         // Subscribe to events
         videoPlayer.prepareCompleted += HandlePrepareCompleted;
         videoPlayer.started += HandleVideoStarted;
@@ -100,16 +86,140 @@ public class VideoEventController : MonoBehaviour
         // Auto-find RawImage if not assigned
         if (displayRawImage == null)
         {
-            displayRawImage = FindAnyObjectByType<RawImage>();
-            if (displayRawImage != null)
+            GameObject rawImageGO = GameObject.Find("VideoRawImage");
+            if (rawImageGO != null)
             {
-                displayRawImage.texture = renderTexture;
+                displayRawImage = rawImageGO.GetComponent<RawImage>();
+            }
+            
+            if (displayRawImage == null)
+            {
+                displayRawImage = FindAnyObjectByType<RawImage>();
             }
         }
         
+        // Assign RenderTexture to RawImage
+        if (displayRawImage != null)
+        {
+            displayRawImage.texture = renderTexture;
+            Debug.Log($"[Lab7] Found RawImage: {displayRawImage.gameObject.name}");
+        }
+        else
+        {
+            Debug.LogWarning("[Lab7] No RawImage found!");
+        }
+        
+        // Auto-find Event Log Text
+        if (eventLogText == null)
+        {
+            // Try to find by searching all TextMeshProUGUI
+            TextMeshProUGUI[] allTexts = FindObjectsByType<TextMeshProUGUI>(FindObjectsSortMode.None);
+            foreach (var txt in allTexts)
+            {
+                if (txt.gameObject.name.Contains("EventLog") || txt.gameObject.name.Contains("Text"))
+                {
+                    // Check if parent is a status canvas
+                    Canvas parentCanvas = txt.GetComponentInParent<Canvas>();
+                    if (parentCanvas != null && parentCanvas.gameObject.name.Contains("EventLog"))
+                    {
+                        eventLogText = txt;
+                        break;
+                    }
+                }
+            }
+            
+            // Fallback: find StatusCanvas's text
+            if (eventLogText == null)
+            {
+                GameObject eventLogCanvas = GameObject.Find("EventLog");
+                if (eventLogCanvas != null)
+                {
+                    eventLogText = eventLogCanvas.GetComponentInChildren<TextMeshProUGUI>();
+                }
+            }
+        }
+        
+        if (eventLogText != null)
+        {
+            Debug.Log($"[Lab7] Found Event Log Text: {eventLogText.gameObject.name}");
+        }
+        else
+        {
+            Debug.LogWarning("[Lab7] No Event Log Text found - creating one");
+            CreateEventLogUI();
+        }
+        
+        // Find end UI panel
+        if (endUIPanel == null)
+        {
+            GameObject endPanel = GameObject.Find("EndPanel");
+            if (endPanel != null)
+            {
+                endUIPanel = endPanel;
+            }
+        }
+        
+        // Hide end UI initially
+        if (endUIPanel != null)
+        {
+            endUIPanel.SetActive(false);
+        }
+        
+        LogEvent("=== Lab 7: Video Events Demo ===");
         LogEvent("Initializing VideoPlayer...");
-        videoPlayer.Prepare();
+        
+        if (videoPlayer.clip != null)
+        {
+            videoPlayer.Prepare();
+        }
+        else
+        {
+            LogEvent("ERROR: No video clip assigned!");
+        }
+        
         UpdateStatusUI();
+    }
+    
+    private void CreateEventLogUI()
+    {
+        // Create a simple event log display
+        GameObject canvasObj = new GameObject("EventLogCanvas_Runtime");
+        Canvas canvas = canvasObj.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = 50;
+        canvasObj.AddComponent<CanvasScaler>();
+        canvasObj.AddComponent<GraphicRaycaster>();
+        
+        // Create background panel
+        GameObject panelObj = new GameObject("EventLogPanel");
+        panelObj.transform.SetParent(canvasObj.transform);
+        
+        RectTransform panelRect = panelObj.AddComponent<RectTransform>();
+        panelRect.anchorMin = new Vector2(1, 0.3f);
+        panelRect.anchorMax = new Vector2(1, 0.9f);
+        panelRect.pivot = new Vector2(1, 0.5f);
+        panelRect.anchoredPosition = new Vector2(-20, 0);
+        panelRect.sizeDelta = new Vector2(350, 0);
+        
+        Image panelBg = panelObj.AddComponent<Image>();
+        panelBg.color = new Color(0, 0, 0, 0.8f);
+        
+        // Create text
+        GameObject textObj = new GameObject("EventLogText");
+        textObj.transform.SetParent(panelObj.transform);
+        
+        RectTransform textRect = textObj.AddComponent<RectTransform>();
+        textRect.anchorMin = Vector2.zero;
+        textRect.anchorMax = Vector2.one;
+        textRect.offsetMin = new Vector2(10, 10);
+        textRect.offsetMax = new Vector2(-10, -10);
+        
+        eventLogText = textObj.AddComponent<TextMeshProUGUI>();
+        eventLogText.fontSize = 14;
+        eventLogText.color = Color.white;
+        eventLogText.alignment = TextAlignmentOptions.TopLeft;
+        
+        Debug.Log("[Lab7] Created runtime Event Log UI");
     }
     
     private void Update()
@@ -123,6 +233,7 @@ public class VideoEventController : MonoBehaviour
             if (isPrepared)
             {
                 videoPlayer.Play();
+                LogEvent("User pressed V - Playing video");
             }
         }
         
@@ -130,15 +241,22 @@ public class VideoEventController : MonoBehaviour
         if (keyboard.spaceKey.wasPressedThisFrame)
         {
             if (videoPlayer.isPlaying)
+            {
                 videoPlayer.Pause();
+                LogEvent("User pressed Space - Paused");
+            }
             else if (isPrepared)
+            {
                 videoPlayer.Play();
+                LogEvent("User pressed Space - Resumed");
+            }
         }
         
         // R to restart
         if (keyboard.rKey.wasPressedThisFrame)
         {
             RestartVideo();
+            LogEvent("User pressed R - Restarting");
         }
         
         // C to clear log
@@ -154,28 +272,32 @@ public class VideoEventController : MonoBehaviour
     {
         isPrepared = true;
         LogEvent("✓ EVENT: prepareCompleted");
-        Debug.Log("[VideoEvent] prepareCompleted - Video is ready to play");
+        LogEvent("   → Video is ready to play!");
+        Debug.Log("[Lab7] prepareCompleted - Video is ready");
         
         OnVideoPrepared?.Invoke();
         
         if (autoPlay)
         {
             videoPlayer.Play();
+            LogEvent("   → Auto-play enabled, starting...");
         }
     }
     
     private void HandleVideoStarted(VideoPlayer vp)
     {
         LogEvent("▶ EVENT: started");
-        Debug.Log("[VideoEvent] started - Video playback started");
+        LogEvent("   → Video playback started");
+        Debug.Log("[Lab7] started - Video playback started");
         
         OnVideoStarted?.Invoke();
     }
     
     private void HandleLoopPointReached(VideoPlayer vp)
     {
-        LogEvent("⏹ EVENT: loopPointReached (Video Ended)");
-        Debug.Log("[VideoEvent] loopPointReached - Video finished playing");
+        LogEvent("⏹ EVENT: loopPointReached");
+        LogEvent("   → Video finished playing!");
+        Debug.Log("[Lab7] loopPointReached - Video finished");
         
         OnVideoEnded?.Invoke();
         
@@ -192,7 +314,7 @@ public class VideoEventController : MonoBehaviour
                 break;
                 
             case VideoEndAction.ShowUI:
-                LogEvent("End Action: Show UI Panel");
+                LogEvent("End Action: Showing UI Panel");
                 if (endUIPanel != null)
                 {
                     endUIPanel.SetActive(true);
@@ -208,7 +330,7 @@ public class VideoEventController : MonoBehaviour
                 break;
                 
             case VideoEndAction.RestartVideo:
-                LogEvent("End Action: Restart Video");
+                LogEvent("End Action: Restarting video");
                 RestartVideo();
                 break;
         }
@@ -224,7 +346,6 @@ public class VideoEventController : MonoBehaviour
         
         videoPlayer.time = 0;
         videoPlayer.Play();
-        LogEvent("Video restarted");
     }
     
     public void LoadNextScene()
@@ -238,7 +359,10 @@ public class VideoEventController : MonoBehaviour
     private void LogEvent(string message)
     {
         string timestamp = System.DateTime.Now.ToString("HH:mm:ss");
-        eventLog.AppendLine($"[{timestamp}] {message}");
+        string logLine = $"[{timestamp}] {message}";
+        eventLog.AppendLine(logLine);
+        
+        Debug.Log($"[Lab7 EventLog] {message}");
         
         if (eventLogText != null)
         {
@@ -249,11 +373,7 @@ public class VideoEventController : MonoBehaviour
     private void ClearEventLog()
     {
         eventLog.Clear();
-        if (eventLogText != null)
-        {
-            eventLogText.text = "";
-        }
-        LogEvent("Log cleared");
+        LogEvent("=== Log Cleared ===");
     }
     
     private void UpdateStatusUI()
@@ -285,7 +405,7 @@ public class VideoEventController : MonoBehaviour
         videoPlayer.loopPointReached -= HandleLoopPointReached;
         
         // Cleanup runtime RenderTexture
-        if (renderTexture != null && renderTexture.name == "Lab7_VideoRenderTexture")
+        if (renderTexture != null)
         {
             renderTexture.Release();
             Destroy(renderTexture);
