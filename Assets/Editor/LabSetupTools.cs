@@ -292,6 +292,9 @@ public class LabSetupTools : EditorWindow
         string scenePath = $"{SCENES_PATH}/Lab5_VideoPlayerBasic.unity";
         var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
         
+        // Create or get RenderTexture
+        RenderTexture rt = GetOrCreateRenderTexture();
+        
         // Create Video Player object
         GameObject videoObj = new GameObject("VideoPlayerObject");
         VideoPlayer videoPlayer = videoObj.AddComponent<VideoPlayer>();
@@ -301,14 +304,44 @@ public class LabSetupTools : EditorWindow
             videoPlayer.clip = videoClip;
         
         videoPlayer.playOnAwake = false;
-        videoPlayer.renderMode = VideoRenderMode.CameraNearPlane;
+        videoPlayer.renderMode = VideoRenderMode.RenderTexture;
+        videoPlayer.targetTexture = rt;
+        
+        // Audio
+        videoPlayer.audioOutputMode = VideoAudioOutputMode.Direct;
         
         var controller = videoObj.AddComponent<VideoTriggerController>();
+        
+        // Create UI Canvas with fullscreen RawImage for video display
+        GameObject uiCanvas = new GameObject("VideoDisplayCanvas");
+        Canvas canvas = uiCanvas.AddComponent<Canvas>();
+        canvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        canvas.sortingOrder = -1; // Behind other UI
+        
+        CanvasScaler scaler = uiCanvas.AddComponent<CanvasScaler>();
+        scaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        scaler.referenceResolution = new Vector2(1920, 1080);
+        
+        uiCanvas.AddComponent<GraphicRaycaster>();
+        
+        // Create fullscreen RawImage for video
+        GameObject rawImageObj = new GameObject("VideoRawImage");
+        rawImageObj.transform.SetParent(uiCanvas.transform);
+        
+        RawImage rawImage = rawImageObj.AddComponent<RawImage>();
+        rawImage.texture = rt;
+        rawImage.color = Color.white;
+        
+        RectTransform rawRect = rawImage.GetComponent<RectTransform>();
+        rawRect.anchorMin = new Vector2(0.1f, 0.15f);
+        rawRect.anchorMax = new Vector2(0.9f, 0.85f);
+        rawRect.offsetMin = Vector2.zero;
+        rawRect.offsetMax = Vector2.zero;
         
         // Create instruction UI
         CreateInstructionCanvas(
             "Lab 5 - VideoPlayer Basic",
-            "Basic VideoPlayer control.\nVideo (.mp4) imported và gắn VideoPlayer.",
+            "Basic VideoPlayer control.\nVideo (.mp4) imported và gắn VideoPlayer.\nVideo hiển thị qua RenderTexture + RawImage.",
             "Controls:\nV = Play Video\nSpace = Pause/Resume\nR = Restart"
         );
         
@@ -401,18 +434,51 @@ public class LabSetupTools : EditorWindow
         string scenePath = $"{SCENES_PATH}/Lab7_VideoEvents.unity";
         var scene = EditorSceneManager.NewScene(NewSceneSetup.DefaultGameObjects, NewSceneMode.Single);
         
+        // Create or get RenderTexture
+        RenderTexture rt = GetOrCreateRenderTexture();
+        
         // Create Video Player
         GameObject videoObj = new GameObject("VideoPlayerWithEvents");
         VideoPlayer videoPlayer = videoObj.AddComponent<VideoPlayer>();
-        videoPlayer.renderMode = VideoRenderMode.CameraNearPlane;
+        videoPlayer.renderMode = VideoRenderMode.RenderTexture;
+        videoPlayer.targetTexture = rt;
         videoPlayer.playOnAwake = false;
         videoPlayer.isLooping = false;
+        
+        // Audio
+        videoPlayer.audioOutputMode = VideoAudioOutputMode.Direct;
         
         var videoClip = GetFirstVideoClip();
         if (videoClip != null)
             videoPlayer.clip = videoClip;
         
         var controller = videoObj.AddComponent<VideoEventController>();
+        
+        // Create UI Canvas with RawImage for video display
+        GameObject videoCanvas = new GameObject("VideoDisplayCanvas");
+        Canvas vCanvas = videoCanvas.AddComponent<Canvas>();
+        vCanvas.renderMode = RenderMode.ScreenSpaceOverlay;
+        vCanvas.sortingOrder = -1; // Behind other UI
+        
+        CanvasScaler vScaler = videoCanvas.AddComponent<CanvasScaler>();
+        vScaler.uiScaleMode = CanvasScaler.ScaleMode.ScaleWithScreenSize;
+        vScaler.referenceResolution = new Vector2(1920, 1080);
+        
+        videoCanvas.AddComponent<GraphicRaycaster>();
+        
+        // Create RawImage for video
+        GameObject rawImageObj = new GameObject("VideoRawImage");
+        rawImageObj.transform.SetParent(videoCanvas.transform);
+        
+        RawImage rawImage = rawImageObj.AddComponent<RawImage>();
+        rawImage.texture = rt;
+        rawImage.color = Color.white;
+        
+        RectTransform rawRect = rawImage.GetComponent<RectTransform>();
+        rawRect.anchorMin = new Vector2(0.1f, 0.15f);
+        rawRect.anchorMax = new Vector2(0.9f, 0.85f);
+        rawRect.offsetMin = Vector2.zero;
+        rawRect.offsetMax = Vector2.zero;
         
         // Create End Panel (hidden by default)
         GameObject endCanvas = new GameObject("VideoEndCanvas");
@@ -455,7 +521,7 @@ public class LabSetupTools : EditorWindow
         // Create instruction UI
         CreateInstructionCanvas(
             "Lab 7 - Video Events",
-            "Demonstrate VideoPlayer events:\n• prepareCompleted\n• loopPointReached (video end)",
+            "Demonstrate VideoPlayer events:\n• prepareCompleted\n• loopPointReached (video end)\nVideo hiển thị qua RenderTexture + RawImage.",
             "Controls:\nV = Play Video\nSpace = Pause/Resume\nR = Restart\nC = Clear Log\n\nWatch the Event Log!"
         );
         

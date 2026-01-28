@@ -1,12 +1,14 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Video;
+using UnityEngine.UI;
 using UnityEngine.Events;
 using UnityEngine.SceneManagement;
 
 /// <summary>
 /// Lab 7 - Video Events & Control
 /// Demonstrates prepareCompleted and loopPointReached events
+/// Displays video via RenderTexture + RawImage
 /// </summary>
 [RequireComponent(typeof(VideoPlayer))]
 public class VideoEventController : MonoBehaviour
@@ -15,6 +17,12 @@ public class VideoEventController : MonoBehaviour
     [SerializeField] private VideoClip videoClip;
     [SerializeField] private bool autoPlay = true;
     [SerializeField] private bool loop = false;
+    
+    [Header("Render Settings")]
+    [SerializeField] private RawImage displayRawImage;
+    [SerializeField] private RenderTexture renderTexture;
+    [SerializeField] private int videoWidth = 1920;
+    [SerializeField] private int videoHeight = 1080;
     
     [Header("On Video End Action")]
     [SerializeField] private VideoEndAction endAction = VideoEndAction.ShowUI;
@@ -32,6 +40,7 @@ public class VideoEventController : MonoBehaviour
     
     private VideoPlayer videoPlayer;
     private System.Text.StringBuilder eventLog = new System.Text.StringBuilder();
+    private bool isPrepared = false;
     
     public enum VideoEndAction
     {
@@ -45,13 +54,33 @@ public class VideoEventController : MonoBehaviour
     {
         videoPlayer = GetComponent<VideoPlayer>();
         
+        // Create RenderTexture if not assigned
+        if (renderTexture == null)
+        {
+            renderTexture = new RenderTexture(videoWidth, videoHeight, 0);
+            renderTexture.name = "Lab7_VideoRenderTexture";
+            renderTexture.Create();
+        }
+        
         // Configure VideoPlayer
+        videoPlayer.renderMode = VideoRenderMode.RenderTexture;
+        videoPlayer.targetTexture = renderTexture;
         videoPlayer.isLooping = loop;
         videoPlayer.playOnAwake = false;
         
         if (videoClip != null)
         {
             videoPlayer.clip = videoClip;
+        }
+        
+        // Audio
+        videoPlayer.audioOutputMode = VideoAudioOutputMode.Direct;
+        videoPlayer.SetDirectAudioVolume(0, 1f);
+        
+        // Assign RenderTexture to RawImage
+        if (displayRawImage != null)
+        {
+            displayRawImage.texture = renderTexture;
         }
         
         // Hide end UI initially
@@ -68,6 +97,16 @@ public class VideoEventController : MonoBehaviour
     
     private void Start()
     {
+        // Auto-find RawImage if not assigned
+        if (displayRawImage == null)
+        {
+            displayRawImage = FindAnyObjectByType<RawImage>();
+            if (displayRawImage != null)
+            {
+                displayRawImage.texture = renderTexture;
+            }
+        }
+        
         LogEvent("Initializing VideoPlayer...");
         videoPlayer.Prepare();
         UpdateStatusUI();
@@ -81,7 +120,10 @@ public class VideoEventController : MonoBehaviour
         // V to play
         if (keyboard.vKey.wasPressedThisFrame)
         {
-            videoPlayer.Play();
+            if (isPrepared)
+            {
+                videoPlayer.Play();
+            }
         }
         
         // Space to pause/resume
@@ -89,7 +131,7 @@ public class VideoEventController : MonoBehaviour
         {
             if (videoPlayer.isPlaying)
                 videoPlayer.Pause();
-            else
+            else if (isPrepared)
                 videoPlayer.Play();
         }
         
@@ -110,6 +152,7 @@ public class VideoEventController : MonoBehaviour
     
     private void HandlePrepareCompleted(VideoPlayer vp)
     {
+        isPrepared = true;
         LogEvent("✓ EVENT: prepareCompleted");
         Debug.Log("[VideoEvent] prepareCompleted - Video is ready to play");
         
@@ -217,7 +260,7 @@ public class VideoEventController : MonoBehaviour
     {
         if (statusText == null) return;
         
-        string playStatus = videoPlayer.isPlaying ? "▶️ Playing" : (videoPlayer.isPaused ? "⏸️ Paused" : "⏹️ Stopped");
+        string playStatus = videoPlayer.isPlaying ? "▶️ Playing" : (isPrepared ? "⏸️ Ready" : "⏳ Preparing");
         double currentTime = videoPlayer.time;
         double duration = videoPlayer.clip != null ? videoPlayer.clip.length : 0;
         
@@ -240,5 +283,12 @@ public class VideoEventController : MonoBehaviour
         videoPlayer.prepareCompleted -= HandlePrepareCompleted;
         videoPlayer.started -= HandleVideoStarted;
         videoPlayer.loopPointReached -= HandleLoopPointReached;
+        
+        // Cleanup runtime RenderTexture
+        if (renderTexture != null && renderTexture.name == "Lab7_VideoRenderTexture")
+        {
+            renderTexture.Release();
+            Destroy(renderTexture);
+        }
     }
 }

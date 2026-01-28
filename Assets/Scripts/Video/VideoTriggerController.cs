@@ -1,10 +1,12 @@
 using UnityEngine;
 using UnityEngine.InputSystem;
 using UnityEngine.Video;
+using UnityEngine.UI;
 
 /// <summary>
 /// Lab 5 - VideoPlayer Basic
 /// Controls: V = Play, Space = Pause/Resume, R = Restart
+/// Renders video to a RawImage UI element
 /// </summary>
 [RequireComponent(typeof(VideoPlayer))]
 public class VideoTriggerController : MonoBehaviour
@@ -13,6 +15,12 @@ public class VideoTriggerController : MonoBehaviour
     [SerializeField] private VideoClip videoClip;
     [SerializeField] private bool playOnAwake = false;
     [SerializeField] private bool loop = false;
+    
+    [Header("Render Settings")]
+    [SerializeField] private RawImage displayRawImage;
+    [SerializeField] private RenderTexture renderTexture;
+    [SerializeField] private int videoWidth = 1920;
+    [SerializeField] private int videoHeight = 1080;
     
     [Header("Audio Settings")]
     [SerializeField] private bool playAudio = true;
@@ -28,8 +36,18 @@ public class VideoTriggerController : MonoBehaviour
     {
         videoPlayer = GetComponent<VideoPlayer>();
         
-        // Configure VideoPlayer
-        videoPlayer.playOnAwake = playOnAwake;
+        // Create RenderTexture if not assigned
+        if (renderTexture == null)
+        {
+            renderTexture = new RenderTexture(videoWidth, videoHeight, 0);
+            renderTexture.name = "Lab5_VideoRenderTexture";
+            renderTexture.Create();
+        }
+        
+        // Configure VideoPlayer to render to RenderTexture
+        videoPlayer.renderMode = VideoRenderMode.RenderTexture;
+        videoPlayer.targetTexture = renderTexture;
+        videoPlayer.playOnAwake = false;
         videoPlayer.isLooping = loop;
         
         if (videoClip != null)
@@ -39,7 +57,20 @@ public class VideoTriggerController : MonoBehaviour
         
         // Audio output
         videoPlayer.audioOutputMode = VideoAudioOutputMode.Direct;
-        videoPlayer.SetDirectAudioVolume(0, volume);
+        if (playAudio)
+        {
+            videoPlayer.SetDirectAudioVolume(0, volume);
+        }
+        else
+        {
+            videoPlayer.SetDirectAudioVolume(0, 0f);
+        }
+        
+        // Assign RenderTexture to RawImage for display
+        if (displayRawImage != null)
+        {
+            displayRawImage.texture = renderTexture;
+        }
         
         // Events
         videoPlayer.prepareCompleted += OnPrepareCompleted;
@@ -49,10 +80,25 @@ public class VideoTriggerController : MonoBehaviour
     
     private void Start()
     {
+        // Auto-find RawImage if not assigned
+        if (displayRawImage == null)
+        {
+            displayRawImage = FindAnyObjectByType<RawImage>();
+            if (displayRawImage != null)
+            {
+                displayRawImage.texture = renderTexture;
+            }
+        }
+        
         // Prepare video
         if (videoPlayer.clip != null)
         {
             videoPlayer.Prepare();
+        }
+        
+        if (playOnAwake && isPrepared)
+        {
+            videoPlayer.Play();
         }
         
         UpdateStatusUI();
@@ -130,10 +176,25 @@ public class VideoTriggerController : MonoBehaviour
         videoPlayer.SetDirectAudioVolume(0, volume);
     }
     
+    public void SetDisplayTarget(RawImage rawImage)
+    {
+        displayRawImage = rawImage;
+        if (displayRawImage != null && renderTexture != null)
+        {
+            displayRawImage.texture = renderTexture;
+        }
+    }
+    
     private void OnPrepareCompleted(VideoPlayer vp)
     {
         isPrepared = true;
         Debug.Log("[VideoTrigger] Video prepared and ready to play");
+        
+        // Auto-play after prepare if playOnAwake
+        if (playOnAwake)
+        {
+            videoPlayer.Play();
+        }
     }
     
     private void OnVideoStarted(VideoPlayer vp)
@@ -177,5 +238,12 @@ public class VideoTriggerController : MonoBehaviour
         videoPlayer.prepareCompleted -= OnPrepareCompleted;
         videoPlayer.started -= OnVideoStarted;
         videoPlayer.loopPointReached -= OnLoopPointReached;
+        
+        // Cleanup runtime RenderTexture
+        if (renderTexture != null && renderTexture.name == "Lab5_VideoRenderTexture")
+        {
+            renderTexture.Release();
+            Destroy(renderTexture);
+        }
     }
 }

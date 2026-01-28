@@ -6,7 +6,7 @@ using UnityEngine.UI;
 /// <summary>
 /// Lab 6 - Video Render Target
 /// Display video via RenderTexture → RawImage (UI) or Material (3D Object)
-/// Controls: Tab = Switch display mode
+/// Controls: Tab = Switch display mode, Space = Play/Pause, V = Play
 /// </summary>
 [RequireComponent(typeof(VideoPlayer))]
 public class VideoRenderTargetController : MonoBehaviour
@@ -22,10 +22,17 @@ public class VideoRenderTargetController : MonoBehaviour
     [SerializeField] private bool autoPlay = true;
     [SerializeField] private bool loop = true;
     
-    [Header("Render Targets")]
+    [Header("Render Texture")]
     [SerializeField] private RenderTexture renderTexture;
+    [SerializeField] private int videoWidth = 1920;
+    [SerializeField] private int videoHeight = 1080;
+    
+    [Header("UI Display")]
     [SerializeField] private RawImage uiRawImage;
+    
+    [Header("3D Display")]
     [SerializeField] private Renderer targetRenderer;
+    [SerializeField] private MeshFilter targetMeshFilter;
     
     [Header("Display Mode")]
     [SerializeField] private RenderMode currentMode = RenderMode.RawImage;
@@ -35,43 +42,55 @@ public class VideoRenderTargetController : MonoBehaviour
     
     private VideoPlayer videoPlayer;
     private Material runtimeMaterial;
+    private bool isPrepared = false;
     
     private void Awake()
     {
         videoPlayer = GetComponent<VideoPlayer>();
         
+        // Create RenderTexture if not assigned
+        if (renderTexture == null)
+        {
+            renderTexture = new RenderTexture(videoWidth, videoHeight, 0);
+            renderTexture.name = "Lab6_VideoRenderTexture";
+            renderTexture.Create();
+        }
+        
         // Configure VideoPlayer
         videoPlayer.isLooping = loop;
         videoPlayer.playOnAwake = false;
+        videoPlayer.renderMode = VideoRenderMode.RenderTexture;
+        videoPlayer.targetTexture = renderTexture;
         
         if (videoClip != null)
         {
             videoPlayer.clip = videoClip;
         }
         
-        // Set render mode to RenderTexture
-        videoPlayer.renderMode = VideoRenderMode.RenderTexture;
+        // Audio
+        videoPlayer.audioOutputMode = VideoAudioOutputMode.Direct;
+        videoPlayer.SetDirectAudioVolume(0, 1f);
         
-        // Create RenderTexture if not assigned
-        if (renderTexture == null)
+        // Setup UI display
+        if (uiRawImage != null)
         {
-            renderTexture = new RenderTexture(1920, 1080, 0);
-            renderTexture.name = "VideoRenderTexture";
+            uiRawImage.texture = renderTexture;
         }
-        
-        videoPlayer.targetTexture = renderTexture;
         
         // Setup material for 3D renderer
         SetupMaterial();
         
-        // Apply initial mode
-        ApplyRenderMode();
+        // Events
+        videoPlayer.prepareCompleted += OnPrepared;
     }
     
     private void Start()
     {
+        // Apply initial mode
+        ApplyRenderMode();
+        
+        // Prepare video
         videoPlayer.Prepare();
-        videoPlayer.prepareCompleted += OnPrepared;
         
         UpdateStatusUI();
     }
@@ -87,12 +106,21 @@ public class VideoRenderTargetController : MonoBehaviour
             ToggleRenderMode();
         }
         
+        // V to play
+        if (keyboard.vKey.wasPressedThisFrame)
+        {
+            if (isPrepared)
+            {
+                videoPlayer.Play();
+            }
+        }
+        
         // Space to play/pause
         if (keyboard.spaceKey.wasPressedThisFrame)
         {
             if (videoPlayer.isPlaying)
                 videoPlayer.Pause();
-            else
+            else if (isPrepared)
                 videoPlayer.Play();
         }
         
@@ -103,10 +131,23 @@ public class VideoRenderTargetController : MonoBehaviour
     {
         if (targetRenderer != null)
         {
-            // Create runtime material to avoid modifying shared material
-            runtimeMaterial = new Material(Shader.Find("Unlit/Texture"));
-            runtimeMaterial.mainTexture = renderTexture;
-            targetRenderer.material = runtimeMaterial;
+            // Create runtime material with Unlit/Texture shader
+            Shader unlitShader = Shader.Find("Unlit/Texture");
+            if (unlitShader == null)
+            {
+                unlitShader = Shader.Find("Universal Render Pipeline/Unlit");
+            }
+            
+            if (unlitShader != null)
+            {
+                runtimeMaterial = new Material(unlitShader);
+                runtimeMaterial.mainTexture = renderTexture;
+                targetRenderer.material = runtimeMaterial;
+            }
+            else
+            {
+                Debug.LogWarning("[VideoRenderTarget] Could not find Unlit shader");
+            }
         }
     }
     
@@ -149,6 +190,10 @@ public class VideoRenderTargetController : MonoBehaviour
                 if (targetRenderer != null)
                 {
                     targetRenderer.gameObject.SetActive(true);
+                    if (runtimeMaterial != null)
+                    {
+                        runtimeMaterial.mainTexture = renderTexture;
+                    }
                 }
                 break;
         }
@@ -156,6 +201,7 @@ public class VideoRenderTargetController : MonoBehaviour
     
     private void OnPrepared(VideoPlayer vp)
     {
+        isPrepared = true;
         Debug.Log("[VideoRenderTarget] Video prepared");
         
         if (autoPlay)
@@ -169,12 +215,25 @@ public class VideoRenderTargetController : MonoBehaviour
         if (statusText == null) return;
         
         string modeName = currentMode == RenderMode.RawImage ? "UI RawImage" : "3D Material";
-        string playStatus = videoPlayer.isPlaying ? "▶️ Playing" : "⏸️ Paused";
+        string playStatus = videoPlayer.isPlaying ? "▶️ Playing" : (isPrepared ? "⏸️ Paused" : "⏳ Preparing");
+        string resolution = $"{videoWidth}x{videoHeight}";
+        
+        double currentTime = videoPlayer.time;
+        double duration = videoPlayer.clip != null ? videoPlayer.clip.length : 0;
+        string timeText = $"{FormatTime(currentTime)} / {FormatTime(duration)}";
         
         statusText.text = $"Render Mode: {modeName}\n" +
                           $"Status: {playStatus}\n" +
-                          $"RenderTexture: {renderTexture.width}x{renderTexture.height}\n\n" +
-                          $"Controls:\nTab = Switch Mode\nSpace = Play/Pause";
+                          $"Resolution: {resolution}\n" +
+                          $"Time: {timeText}\n\n" +
+                          $"Controls:\nTab = Switch Mode\nV = Play\nSpace = Pause";
+    }
+    
+    private string FormatTime(double seconds)
+    {
+        int mins = (int)(seconds / 60);
+        int secs = (int)(seconds % 60);
+        return $"{mins:00}:{secs:00}";
     }
     
     private void OnDestroy()
@@ -185,6 +244,13 @@ public class VideoRenderTargetController : MonoBehaviour
         if (runtimeMaterial != null)
         {
             Destroy(runtimeMaterial);
+        }
+        
+        // Cleanup runtime RenderTexture
+        if (renderTexture != null && renderTexture.name == "Lab6_VideoRenderTexture")
+        {
+            renderTexture.Release();
+            Destroy(renderTexture);
         }
     }
 }
